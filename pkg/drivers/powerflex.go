@@ -53,9 +53,16 @@ const (
 	CsiPowerflexExternalAccess = "<X_CSI_POWERFLEX_EXTERNAL_ACCESS>"
 )
 
+// zhou: because the ContainerStorageModule CRD definition accomodate all kinds of storage array,
+//       schema is not strict enough. So, more precheck here.
+//       Due to MDM IP is not part of CR, need to parse Secret and update "cr" with MDM ip.
+
 // PrecheckPowerFlex do input validation
 func PrecheckPowerFlex(ctx context.Context, cr *csmv1.ContainerStorageModule, operatorConfig utils.OperatorConfig, ct client.Client) error {
 	log := logger.GetLogger(ctx)
+
+	// zhou: make sure there is a correponding "driverconfig/powerflex/v2.10.0/upgrade-path.yaml"
+	//       Otherwise, can't be installed.
 
 	// Check if driver version is supported by doing a stat on a config file
 	configFilePath := fmt.Sprintf("%s/driverconfig/%s/%s/upgrade-path.yaml", operatorConfig.ConfigDirectory, csmv1.PowerFlex, cr.Spec.Driver.ConfigVersion)
@@ -64,10 +71,15 @@ func PrecheckPowerFlex(ctx context.Context, cr *csmv1.ContainerStorageModule, op
 		return fmt.Errorf("%s %s not supported", csmv1.PowerFlexName, cr.Spec.Driver.ConfigVersion)
 	}
 
+	// zhou: validate config in Secret, return all mdm ip.
+
 	mdmVar, err := GetMDMFromSecret(ctx, cr, ct)
 	if err != nil {
 		return err
 	}
+
+	// zhou: update MDM ip in initContainers
+
 	var newmdm corev1.EnvVar
 	for _, initcontainer := range cr.Spec.Driver.InitContainers {
 		if initcontainer.Name == "sdc" {
@@ -85,6 +97,8 @@ func PrecheckPowerFlex(ctx context.Context, cr *csmv1.ContainerStorageModule, op
 			break
 		}
 	}
+
+	// zhou: update MDM ip in sidecar sdc-monitor
 
 	for _, sidecar := range cr.Spec.Driver.SideCars {
 		if sidecar.Name == "sdc-monitor" {
@@ -106,14 +120,21 @@ func PrecheckPowerFlex(ctx context.Context, cr *csmv1.ContainerStorageModule, op
 	return nil
 }
 
+// zhou: validate config in Secret, return all mdm ip.
+
 // GetMDMFromSecret - Get MDM value from secret
 func GetMDMFromSecret(ctx context.Context, cr *csmv1.ContainerStorageModule, ct client.Client) (string, error) {
 	log := logger.GetLogger(ctx)
+
+	// zhou: powerflex secret name = CR name + "-config"
+
 	secretName := cr.Name + "-config"
 	credSecret, err := utils.GetSecret(ctx, secretName, cr.GetNamespace(), ct)
 	if err != nil {
 		return "", fmt.Errorf("reading secret [%s] error [%s]", secretName, err)
 	}
+
+	// zhou: FIXME, "nasName" missed
 
 	type StorageArrayConfig struct {
 		Username                  string `json:"username"`
@@ -161,6 +182,8 @@ func GetMDMFromSecret(ctx context.Context, cr *csmv1.ContainerStorageModule, ct 
 				if !ismdmip {
 					return "", fmt.Errorf("Invalid MDM value. Ip address should be numeric and comma separated without space")
 				}
+
+				// zhou: collect all MDM ip for all configured PowerFlex clusters.
 				if i == 0 {
 					mdmVal += mdmFin
 				} else {
@@ -172,10 +195,14 @@ func GetMDMFromSecret(ctx context.Context, cr *csmv1.ContainerStorageModule, ct 
 				log.Info("For systemID %s configured System Names found %#v ", config.SystemID, names)
 			}
 
+			// zhou: avoid duplicated system id.
+
 			if _, ok := tempMapToFindDuplicates[config.SystemID]; ok {
 				return "", fmt.Errorf("Duplicate SystemID [%s] found in storageArrayList parameter", config.SystemID)
 			}
 			tempMapToFindDuplicates[config.SystemID] = nil
+
+			// zhou: only one default system allowed.
 
 			if config.IsDefault {
 				noOfDefaultArrays++
@@ -217,6 +244,8 @@ func IsIpv4Regex(ipAddress string) bool {
 	return ipRegex.MatchString(ipAddress)
 }
 
+// zhou: used to update CSI driver Node Plugin, Controller Plugin and CSIDriver related objects according to CSM CR.
+
 // ModifyPowerflexCR - Set environment variables provided in CR
 func ModifyPowerflexCR(yamlString string, cr csmv1.ContainerStorageModule, fileType string) string {
 	approveSdcEnabled := ""
@@ -232,6 +261,9 @@ func ModifyPowerflexCR(yamlString string, cr csmv1.ContainerStorageModule, fileT
 	// nolint:gosec
 	switch fileType {
 	case "Controller":
+
+		// zhou: used to update CSI driver Deployment Spec according to CR
+
 		for _, env := range cr.Spec.Driver.Controller.Envs {
 			if env.Name == "X_CSI_POWERFLEX_EXTERNAL_ACCESS" {
 				powerflexExternalAccess = env.Value
@@ -244,6 +276,9 @@ func ModifyPowerflexCR(yamlString string, cr csmv1.ContainerStorageModule, fileT
 		yamlString = strings.ReplaceAll(yamlString, CsiPowerflexExternalAccess, powerflexExternalAccess)
 
 	case "Node":
+
+		// zhou: used to update CSI driver DaemonSet Spec according to CR
+
 		for _, env := range cr.Spec.Driver.Node.Envs {
 			if env.Name == "X_CSI_APPROVE_SDC_ENABLED" {
 				approveSdcEnabled = env.Value
@@ -271,6 +306,9 @@ func ModifyPowerflexCR(yamlString string, cr csmv1.ContainerStorageModule, fileT
 		yamlString = strings.ReplaceAll(yamlString, CsiHealthMonitorEnabled, healthMonitorNode)
 
 	case "CSIDriverSpec":
+
+		// zhou: used to update CSIDriver.Spec according to CR
+
 		if cr.Spec.Driver.CSIDriverSpec.StorageCapacity {
 			storageCapacity = "true"
 		}

@@ -42,6 +42,8 @@ func SyncDaemonset(ctx context.Context, daemonset appsv1.DaemonSetApplyConfigura
 		log.Infow("found daemonset", "image", found.Spec.Template.Spec.Containers[0].Image)
 	}
 
+	// zhou: add CSM CR name in deployment
+
 	daemonset.Spec.Template.Labels["csm"] = csmName
 	_, err = daemonsets.Apply(ctx, &daemonset, opts)
 	if err != nil {

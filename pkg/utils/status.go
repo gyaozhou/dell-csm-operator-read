@@ -36,6 +36,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+// zhou: this file should be part of controller logic.
+
 var dMutex sync.RWMutex
 
 var checkModuleStatus = map[csmv1.ModuleType]func(context.Context, *csmv1.ContainerStorageModule, ReconcileCSM, *csmv1.ContainerStorageModuleStatus) (bool, error){
@@ -50,6 +52,8 @@ func getInt32(pointer *int32) int32 {
 	}
 	return *pointer
 }
+
+// zhou: get CSI driver Controller Plugin Deployment state
 
 // calculates deployment state of drivers only; module deployment status will be checked in checkModuleStatus
 func getDeploymentStatus(ctx context.Context, instance *csmv1.ContainerStorageModule, r ReconcileCSM) (csmv1.PodStatus, error) {
@@ -67,10 +71,14 @@ func getDeploymentStatus(ctx context.Context, instance *csmv1.ContainerStorageMo
 		Failed:    "0",
 	}
 
+	// zhou: get k8s cluster list including local and replication remote clusters.
+
 	_, clusterClients, err := GetDefaultClusters(ctx, *instance, r)
 	if err != nil {
 		return emptyStatus, err
 	}
+
+	// zhou: traverse local and replication remote clusters.
 
 	for _, cluster := range clusterClients {
 		log.Infof("deployment status for cluster: %s", cluster.ClusterID)
@@ -190,6 +198,8 @@ func getAccStatefulSetStatus(ctx context.Context, instance *csmv1.ApexConnectivi
 	}, err
 }
 
+// zhou: get DaemonSet state, including CSI driver and CSM modules.
+
 func getDaemonSetStatus(ctx context.Context, instance *csmv1.ContainerStorageModule, r ReconcileCSM) (int32, csmv1.PodStatus, error) {
 	log := logger.GetLogger(ctx)
 
@@ -199,6 +209,8 @@ func getDaemonSetStatus(ctx context.Context, instance *csmv1.ContainerStorageMod
 	totalDesired := int32(0)
 	totalFailedCount := 0
 	totalRunning := int32(0)
+
+	// zhou: get k8s cluster list including local and replication remote clusters.
 
 	_, clusterClients, err := GetDefaultClusters(ctx, *instance, r)
 	if err != nil {
@@ -293,16 +305,23 @@ func getDaemonSetStatus(ctx context.Context, instance *csmv1.ContainerStorageMod
 	}, err
 }
 
+// zhou: traverse all derived objects' status to caculate ContainerStorageModule status.
+
 func calculateState(ctx context.Context, instance *csmv1.ContainerStorageModule, r ReconcileCSM, newStatus *csmv1.ContainerStorageModuleStatus) (bool, error) {
 	log := logger.GetLogger(ctx)
 	running := true
 	var err error
 	nodeStatusGood := true
 	newStatus.State = constants.Succeeded
+
+	// zhou: get CSI driver Controller Plugin Deployment state.
+
 	controllerStatus, controllerErr := getDeploymentStatus(ctx, instance, r)
 	if controllerErr != nil {
 		log.Infof("error from getDeploymentStatus: %s", controllerErr.Error())
 	}
+
+	// zhou: get DaemonSet state, including CSI driver and CSM modules.
 
 	// Auth proxy has no daemonset. Putting this if/else in here and setting nodeStatusGood to true by
 	// default is a little hacky but will be fixed when we refactor the status code in CSM 1.10 or 1.11
@@ -398,6 +417,8 @@ func SetAccStatus(ctx context.Context, _ ReconcileCSM, instance *csmv1.ApexConne
 		newStatus.ClientStatus)
 	instance.GetApexConnectivityClientStatus().ClientStatus = newStatus.ClientStatus
 }
+
+// zhou: trigger re-caculate CR status, and update it.
 
 // UpdateStatus of csm
 func UpdateStatus(ctx context.Context, instance *csmv1.ContainerStorageModule, r ReconcileCSM, newStatus *csmv1.ContainerStorageModuleStatus) error {
@@ -523,6 +544,8 @@ func HandleAccValidationError(ctx context.Context, instance *csmv1.ApexConnectiv
 	return LogBannerAndReturn(reconcile.Result{Requeue: false}, validationError)
 }
 
+// zhou:
+
 // HandleSuccess for csm
 func HandleSuccess(ctx context.Context, instance *csmv1.ContainerStorageModule, r ReconcileCSM, newStatus, oldStatus *csmv1.ContainerStorageModuleStatus) reconcile.Result {
 	dMutex.Lock()
@@ -530,7 +553,11 @@ func HandleSuccess(ctx context.Context, instance *csmv1.ContainerStorageModule, 
 
 	log := logger.GetLogger(ctx)
 
+	// zhou: mix unit test into product code, is not a goode practise.
+
 	unitTestRun := DetermineUnitTestRun(ctx)
+
+	// zhou: traverse all derived Deployment and DaemonSet status to caculate ContainerStorageModule status.
 
 	// requeue will use reconcile.Result.Requeue field to track if operator should try reconcile again
 	requeue := reconcile.Result{}

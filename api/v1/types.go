@@ -139,6 +139,8 @@ const (
 	Failed CSMOperatorConditionType = "Failed"
 )
 
+// zhou: CSM module
+
 // Module defines the desired state of a ContainerStorageModule
 type Module struct {
 	// Name is name of ContainerStorageModule modules
@@ -148,6 +150,8 @@ type Module struct {
 	// Enabled is used to indicate whether or not to deploy a module
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Enabled"
 	Enabled bool `json:"enabled" yaml:"enabled"`
+
+	// zhou: for each CSM module version
 
 	// ConfigVersion is the configuration version of the module
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Config Version"
@@ -174,6 +178,8 @@ type PodStatus struct {
 	Failed    string `json:"failed,omitempty"`
 }
 
+// zhou: CSI driver for all kinds of storage array.
+
 // Driver of CSIDriver
 // +k8s:openapi-gen=true
 type Driver struct {
@@ -184,6 +190,8 @@ type Driver struct {
 	// CSIDriverSpec is the specification for CSIDriver
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="CSI Driver Spec"
 	CSIDriverSpec CSIDriverSpec `json:"csiDriverSpec" yaml:"csiDriverSpec"`
+
+	// zhou: CSI driver version.
 
 	// ConfigVersion is the configuration version of the driver
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Config Version"
@@ -197,47 +205,69 @@ type Driver struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="DNSPolicy"
 	DNSPolicy string `json:"dnsPolicy,omitempty" yaml:"dnsPolicy"`
 
+	// zhou: main container common part for both controller and node CSI plugins
+
 	// Common is the common specification for both controller and node plugins
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Common specification"
 	Common ContainerTemplate `json:"common" yaml:"common"`
+
+	// zhou: main container unique part for controller plugin
 
 	// Controller is the specification for Controller plugin only
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Controller Specification"
 	Controller ContainerTemplate `json:"controller,omitempty" yaml:"controller"`
 
+	// zhou: main container unique part for node plugin
+
 	// Node is the specification for Node plugin only
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Node specification"
 	Node ContainerTemplate `json:"node,omitempty" yaml:"node"`
 
+	// zhou: all sidecar containers for both controller and node CSI plugins
+
 	// SideCars is the specification for CSI sidecar containers
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="CSI SideCars specification"
 	SideCars []ContainerTemplate `json:"sideCars,omitempty" yaml:"sideCars"`
+
+	// zhou: all init containers for both controller and node CSI plugins
 
 	// InitContainers is the specification for Driver InitContainers
 	// +operator-sdk:gen-csv:customresourcedefinitions.specDescriptors=true
 	// +operator-sdk:gen-csv:customresourcedefinitions.specDescriptors.displayName="InitContainers"
 	InitContainers []ContainerTemplate `json:"initContainers,omitempty" yaml:"initContainers"`
 
+	// zhou: not be implemented.
+
 	// SnapshotClass is the specification for Snapshot Classes
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Snapshot Classes"
 	SnapshotClass []SnapshotClass `json:"snapshotClass,omitempty" yaml:"snapshotClass"`
+
+	// zhou: not be implemented.
 
 	// ForceUpdate is the boolean flag used to force an update of the driver instance
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Force update"
 	ForceUpdate bool `json:"forceUpdate,omitempty" yaml:"forceUpdate"`
 
+	// zhou: not used by PowerFlex.
+
 	// AuthSecret is the name of the credentials secret for the driver
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Auth Secret"
 	AuthSecret string `json:"authSecret,omitempty" yaml:"authSecret"`
+
+	// zhou: not be implemented.
 
 	// TLSCertSecret is the name of the TLS Cert secret
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="TLSCert Secret"
 	TLSCertSecret string `json:"tlsCertSecret,omitempty" yaml:"tlsCertSecret"`
 
+	// zhou: true in most of cases.
+
 	// ForceRemoveDriver is the boolean flag used to remove driver deployment when CR is deleted
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Force Remove Driver"
 	ForceRemoveDriver bool `json:"forceRemoveDriver,omitempty" yaml:"forceRemoveDriver"`
 }
+
+// zhou: APEX client
 
 // Client - APEX Connectivity Client deployment info
 // +k8s:openapi-gen=true

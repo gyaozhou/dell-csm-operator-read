@@ -57,6 +57,9 @@ const (
 	ConfigDir = "/etc/config/dell-csm-operator"
 	// Operatorconfig sub folder for deployment files
 	Operatorconfig = "operatorconfig"
+
+	// zhou: both upstream k8s and OCP, checking the corresponding
+
 	// K8sMinimumSupportedVersion is the minimum supported version for k8s
 	K8sMinimumSupportedVersion = "1.28"
 	// K8sMaximumSupportedVersion is the maximum supported version for k8s
@@ -88,6 +91,8 @@ func printVersion(log *zap.SugaredLogger) {
 	log.Debugf("Go OS/Arch: %s/%s", osruntime.GOOS, osruntime.GOARCH)
 }
 
+// zhou: handle predefined configuration in "./operatorconfig/", including csi driver/csm module/apex client.
+
 func getOperatorConfig(log *zap.SugaredLogger) utils.OperatorConfig {
 	cfg := utils.OperatorConfig{}
 
@@ -101,6 +106,7 @@ func getOperatorConfig(log *zap.SugaredLogger) utils.OperatorConfig {
 	} else {
 		log.Infof("Kubernetes environment")
 	}
+
 	kubeAPIServerVersion, err := k8sClient.GetKubeAPIServerVersion()
 	if err != nil {
 		log.Info(fmt.Sprintf("kubeVersion err %s", kubeAPIServerVersion))
@@ -122,6 +128,10 @@ func getOperatorConfig(log *zap.SugaredLogger) utils.OperatorConfig {
 		log.Info(fmt.Sprintf("maxVersion %s", K8sMaximumSupportedVersion))
 	}
 
+	// zhou: even the current k8s version is out of support matrix, it's still working.
+	//       Here just used for choose common sidecar image version.
+	//       "/driverconfig" is a subdir of "operatorconfig".
+
 	currentVersion, err := strconv.ParseFloat(kubeVersion, 64)
 	if err != nil {
 		log.Infof("currentVersion is %s", kubeVersion)
@@ -139,6 +149,8 @@ func getOperatorConfig(log *zap.SugaredLogger) utils.OperatorConfig {
 		log.Infof("Current kubernetes version is %s which is a supported version ", kubeVersion)
 	}
 
+	// zhou: Dockerfile "COPY operatorconfig/ /etc/config/dell-csm-operator"
+
 	_, err = os.ReadDir(filepath.Clean(ConfigDir))
 	if err != nil {
 		log.Errorw(err.Error(), "cannot find driver config path", ConfigDir)
@@ -150,6 +162,8 @@ func getOperatorConfig(log *zap.SugaredLogger) utils.OperatorConfig {
 		log.Infof("Use ConfigDirectory %s", cfg.ConfigDirectory)
 		k8sPath = fmt.Sprintf("%s%s", ConfigDir, k8sPath)
 	}
+
+	// zhou: "/etc/config/dell-csm-operator/driverconfig/common/*.yaml"
 
 	buf, err := os.ReadFile(filepath.Clean(k8sPath))
 	if err != nil {
@@ -191,7 +205,13 @@ func main() {
 	ctrl.SetLogger(crzap.New(crzap.UseFlagOptions(&opts)))
 
 	printVersion(log)
+
+	// zhou: load "OperatorConfig"
+
 	operatorConfig := getOperatorConfig(log)
+
+	// zhou: follow controller runtime
+
 	restConfig := ctrl.GetConfigOrDie()
 
 	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{

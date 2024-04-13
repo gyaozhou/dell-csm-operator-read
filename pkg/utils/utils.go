@@ -52,6 +52,8 @@ import (
 	k8sClient "github.com/dell/csm-operator/k8s"
 )
 
+// zhou: used to load common driver images url defined in "operatorconfig/driverconfig/common/*.yaml"
+
 // K8sImagesConfig -
 type K8sImagesConfig struct {
 	K8sVersion string `json:"kubeversion" yaml:"kubeversion"`
@@ -64,7 +66,7 @@ type K8sImagesConfig struct {
 		Externalhealthmonitor string `json:"externalhealthmonitorcontroller" yaml:"externalhealthmonitorcontroller"`
 		Sdc                   string `json:"sdc" yaml:"sdc"`
 		Sdcmonitor            string `json:"sdcmonitor" yaml:"sdcmonitor"`
-		Podmon                string `json:"podmon" yaml:"podmon"`
+		Podmon                string `json:"podmon" yaml:"podmon"` // zhou: no definition in yaml
 	} `json:"images" yaml:"images"`
 }
 
@@ -72,7 +74,7 @@ type K8sImagesConfig struct {
 type OperatorConfig struct {
 	IsOpenShift     bool
 	K8sVersion      K8sImagesConfig
-	ConfigDirectory string
+	ConfigDirectory string // zhou: "operatorconfig/" == "/etc/config/dell-csm-operator"
 }
 
 // RbacYAML -
@@ -81,6 +83,8 @@ type RbacYAML struct {
 	ClusterRole        rbacv1.ClusterRole
 	ClusterRoleBinding rbacv1.ClusterRoleBinding
 }
+
+// zhou: e.g. "operatorconfig/driverconfig/powerflex/v2.10.0/upgrade-path.yaml"
 
 // UpgradePaths a list of versions eligible to upgrade the current version
 type UpgradePaths struct {
@@ -118,8 +122,13 @@ type CSMComponentType interface {
 }
 
 const (
+	// zhou: will be replaced with CR name.
+
 	// DefaultReleaseName constant
 	DefaultReleaseName = "<DriverDefaultReleaseName>"
+
+	// zhou: will be replaced with CR namespace.
+
 	// DefaultReleaseNamespace constant
 	DefaultReleaseNamespace = "<DriverDefaultReleaseNamespace>"
 	// DefaultImagePullPolicy constant
@@ -136,8 +145,12 @@ const (
 	ReplicationSideCarName = "dell-csi-replicator"
 	// ResiliencySideCarName -
 	ResiliencySideCarName = "podmon"
+
+	// zhou: local cluster, used in replication clusters
+
 	// DefaultSourceClusterID -
 	DefaultSourceClusterID = "default-source-cluster"
+
 	// ObservabilityNamespace - karavi
 	ObservabilityNamespace = "karavi"
 	// AuthorizationNamespace - authorization
@@ -197,6 +210,8 @@ func UpdateSideCarApply(sideCars []csmv1.ContainerTemplate, c *acorev1.Container
 		}
 	}
 }
+
+// zhou: replace "operatorconfig/driverconfig/powerflex/v2.10.0/*.yaml" with CR defined.
 
 // ReplaceAllContainerImageApply -
 func ReplaceAllContainerImageApply(img K8sImagesConfig, c *acorev1.ContainerApplyConfiguration) {
@@ -336,6 +351,8 @@ func ReplaceAllArgs(defaultArgs, crArgs []string) []string {
 	defaultArgs = append(defaultArgs, merge...)
 	return defaultArgs
 }
+
+// zhou: replace <DriverDefaultReleaseName> and <DriverDefaultReleaseNamespace> with CR name and namespace.
 
 // ModifyCommonCR -
 func ModifyCommonCR(YamlString string, cr csmv1.ContainerStorageModule) string {
@@ -666,6 +683,8 @@ func GetModuleComponentObj(CtrlBuf []byte) ([]crclient.Object, error) {
 	return ctrlObjects, nil
 }
 
+// zhou: convert to corresponding object
+
 // GetDriverYaml -
 func GetDriverYaml(YamlString, kind string) (interface{}, error) {
 	bufs, err := SplitYaml([]byte(YamlString))
@@ -992,8 +1011,12 @@ func IsResiliencyModuleEnabled(_ context.Context, instance csmv1.ContainerStorag
 	return false
 }
 
+// zhou: get replication remote clusters.
+
 // GetDefaultClusters -
 func GetDefaultClusters(ctx context.Context, instance csmv1.ContainerStorageModule, r ReconcileCSM) (bool, []ReplicaCluster, error) {
+
+	// zhou: local cluster
 	clusterClients := []ReplicaCluster{
 		{
 			ClusterCTRLClient: r.GetClient(),
@@ -1001,6 +1024,8 @@ func GetDefaultClusters(ctx context.Context, instance csmv1.ContainerStorageModu
 			ClusterID:         DefaultSourceClusterID,
 		},
 	}
+
+	// zhou: README,
 
 	replicaEnabled := false
 	for _, m := range instance.Spec.Modules {
@@ -1138,6 +1163,8 @@ func Contains(slice []string, str string) bool {
 	}
 	return false
 }
+
+// zhou: product or unit test environment.
 
 // DetermineUnitTestRun will determine if this reconcile call is part of unit test run
 func DetermineUnitTestRun(ctx context.Context) bool {

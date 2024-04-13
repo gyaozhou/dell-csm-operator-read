@@ -59,17 +59,19 @@ import (
 	// metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// zhou:
+
 // ContainerStorageModuleReconciler reconciles a ContainerStorageModule object
 type ContainerStorageModuleReconciler struct {
 	// controller runtime client, responsible for create, delete, update, get etc.
 	client.Client
 	// k8s client, implements client-go/kubernetes interface, responsible for apply, which
 	// client.Client does not provides
-	K8sClient     kubernetes.Interface
+	K8sClient     kubernetes.Interface // zhou: used for apply yaml file ???
 	Scheme        *runtime.Scheme
 	Log           *zap.SugaredLogger
 	Config        utils.OperatorConfig
-	updateCount   int32
+	updateCount   int32 // zhou: CR updates count.
 	trcID         string
 	EventRecorder record.EventRecorder
 }
@@ -91,6 +93,8 @@ const (
 
 	// CSMFinalizerName -
 	CSMFinalizerName = "finalizer.dell.emc.com"
+
+	// zhou: whole CSM product version
 
 	// CSMVersion -
 	CSMVersion = "v1.11.0"
@@ -265,19 +269,29 @@ func (r *ContainerStorageModuleReconciler) Reconcile(ctx context.Context, req ct
 		return reconcile.Result{}, nil
 	}
 
+	// zhou: why copy it again.
+
 	operatorConfig := &utils.OperatorConfig{
 		IsOpenShift:     r.Config.IsOpenShift,
 		K8sVersion:      r.Config.K8sVersion,
 		ConfigDirectory: r.Config.ConfigDirectory,
 	}
 
+	// zhou: precheck,
+	//       For powerflex, MDM ip is added into "csm".
+
 	// perform prechecks
 	err = r.PreChecks(ctx, csm, *operatorConfig)
+
+	// zhou: config in Secret error.
+
 	if err != nil {
 		csm.GetCSMStatus().State = constants.InvalidConfig
 		r.EventRecorder.Event(csm, corev1.EventTypeWarning, csmv1.EventUpdated, fmt.Sprintf("Failed Prechecks: %s", err))
 		return utils.HandleValidationError(ctx, csm, r, err)
 	}
+
+	// zhou: handle CR deletion
 
 	if csm.IsBeingDeleted() {
 		log.Infow("Delete request", "csm", req.Namespace, "Name", req.Name)
@@ -288,6 +302,8 @@ func (r *ContainerStorageModuleReconciler) Reconcile(ctx context.Context, req ct
 			return ctrl.Result{}, fmt.Errorf("error when syncing rbac: %v", err)
 		}
 
+		// zhou: delete CSI driver and CSM module sidecars.
+
 		// check for force cleanup
 		if csm.Spec.Driver.ForceRemoveDriver {
 			// remove all resources deployed from CR by operator
@@ -297,6 +313,8 @@ func (r *ContainerStorageModuleReconciler) Reconcile(ctx context.Context, req ct
 				return ctrl.Result{}, fmt.Errorf("error when deleting driver: %v", err)
 			}
 		}
+
+		// zhou: delete CSM modules.
 
 		// check for force cleanup on standalone module
 		for _, m := range csm.Spec.Modules {
@@ -309,6 +327,8 @@ func (r *ContainerStorageModuleReconciler) Reconcile(ctx context.Context, req ct
 			}
 		}
 
+		// zhou: remove finalizer "finalizer.dell.emc.com"
+
 		if err := r.removeFinalizer(ctx, csm); err != nil {
 			r.EventRecorder.Event(csm, corev1.EventTypeWarning, csmv1.EventDeleted, fmt.Sprintf("Failed to delete finalizer: %s", err))
 			log.Errorw("remove driver finalizer", "error", err.Error())
@@ -318,6 +338,8 @@ func (r *ContainerStorageModuleReconciler) Reconcile(ctx context.Context, req ct
 
 		return ctrl.Result{}, nil
 	}
+
+	// zhou: add finalizer "finalizer.dell.emc.com" when CR created
 
 	// Add finalizer
 	if !csm.HasFinalizer(CSMFinalizerName) {
@@ -332,8 +354,12 @@ func (r *ContainerStorageModuleReconciler) Reconcile(ctx context.Context, req ct
 
 	oldStatus := csm.GetCSMStatus()
 
+	// zhou: set CSM version and CSI driver version in CR annotation and return true if CSI driver changed.
+	//       Update CR spec with actual MDM ip, add finalizer and annotation.
+
 	// Set the driver annotation
 	isUpdated := applyConfigVersionAnnotations(ctx, csm)
+
 	if isUpdated {
 		err = r.GetClient().Update(ctx, csm)
 		if err != nil {
@@ -342,8 +368,13 @@ func (r *ContainerStorageModuleReconciler) Reconcile(ctx context.Context, req ct
 		}
 	}
 
+	// zhou: caculate state of derived Deployment and DaemonSet.
+
 	newStatus := csm.GetCSMStatus()
+
 	requeue := utils.HandleSuccess(ctx, csm, r, newStatus, oldStatus)
+
+	// zhou: reconcile CSM CR to create and update CSI driver and CSM standalone module.
 
 	// Update the driver
 	syncErr := r.SyncCSM(ctx, *csm, *operatorConfig, r.Client)
@@ -368,6 +399,8 @@ func (r *ContainerStorageModuleReconciler) Reconcile(ctx context.Context, req ct
 	return utils.LogBannerAndReturn(reconcile.Result{Requeue: true}, syncErr)
 }
 
+// zhou: ignore these events
+
 func (r *ContainerStorageModuleReconciler) ignoreUpdatePredicate() predicate.Predicate {
 	return predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
@@ -381,6 +414,8 @@ func (r *ContainerStorageModuleReconciler) ignoreUpdatePredicate() predicate.Pre
 		},
 	}
 }
+
+// zhou: update ContainerStorageModule CR status according to Deployment status changes.
 
 func (r *ContainerStorageModuleReconciler) handleDeploymentUpdate(oldObj interface{}, obj interface{}) {
 	dMutex.Lock()
@@ -438,6 +473,8 @@ func (r *ContainerStorageModuleReconciler) handleDeploymentUpdate(oldObj interfa
 	}
 }
 
+// zhou: update ContainerStorageModule CR status according to Pod status changes.
+
 func (r *ContainerStorageModuleReconciler) handlePodsUpdate(_ interface{}, obj interface{}) {
 	dMutex.Lock()
 	defer dMutex.Unlock()
@@ -482,13 +519,20 @@ func (r *ContainerStorageModuleReconciler) handlePodsUpdate(_ interface{}, obj i
 	}
 }
 
+// zhou: update ContainerStorageModule CR status according to DaemonSet status changes.
+
 func (r *ContainerStorageModuleReconciler) handleDaemonsetUpdate(oldObj interface{}, obj interface{}) {
 	dMutex.Lock()
 	defer dMutex.Unlock()
 
 	old, _ := oldObj.(*appsv1.DaemonSet)
 	d, _ := obj.(*appsv1.DaemonSet)
+
+	// zhou: if it owns Label "csm", the value indicate corresponding "ContainerStorageModule" CR name.
+
 	name := d.Spec.Template.Labels[constants.CsmLabel]
+
+	// zhou: CR name + "-" + CR updated count, as logger prefix.
 
 	key := name + "-" + fmt.Sprintf("%d", r.GetUpdateCount())
 	ctx, log := logger.GetNewContextWithLogger(key)
@@ -506,10 +550,15 @@ func (r *ContainerStorageModuleReconciler) handleDaemonsetUpdate(oldObj interfac
 	log.Infow("daemonset ", "available", available)
 	log.Infow("daemonset ", "numberUnavailable", numberUnavailable)
 
+	// zhou: Label "csmNamespace"
+
 	ns := d.Spec.Template.Labels[constants.CsmNamespaceLabel]
 	if ns == "" {
 		ns = d.Namespace
 	}
+
+	// zhou: owner CR namespaced name.
+
 	r.Log.Debugw("daemonset ", "ns", ns, "name", name)
 	namespacedName := t1.NamespacedName{
 		Name:      name,
@@ -522,6 +571,8 @@ func (r *ContainerStorageModuleReconciler) handleDaemonsetUpdate(oldObj interfac
 		r.Log.Error("daemonset get csm", "error", err.Error())
 	}
 
+	// zhou: update CSM status.
+
 	log.Infow("csm prev status ", "state", csm.Status)
 	newStatus := csm.GetCSMStatus()
 	err = utils.UpdateStatus(ctx, csm, r, newStatus)
@@ -531,6 +582,20 @@ func (r *ContainerStorageModuleReconciler) handleDaemonsetUpdate(oldObj interfac
 		r.EventRecorder.Eventf(csm, corev1.EventTypeNormal, csmv1.EventCompleted, "Driver daemonset running OK")
 	}
 }
+
+// zhou: why not watch Deployment/DeamonSet/Pod directly ???
+//       If it's owned by "ContainerStorageModule", convert to event of this controller.
+//
+//       In this implementation,
+//       1. Watch DaemonSet/Deployment/Pod update events
+//       2. When its status changes, check their Label, make sure it belongs to CSM CR.
+//       3. Get CSM CR, traverse all derived objects status (includes Deployment/DaemonSet).
+//       4. Update CSM CR status.
+//
+//       FIXME, current implementation, only reconcile generated objects' update events
+//       and check their status only.
+//       In fact, it should also reconcile the generated objects' spec and status,
+//       includes all  create/update/delete/generic events.
 
 // ContentWatch - watch updates on deployment and deamonset
 func (r *ContainerStorageModuleReconciler) ContentWatch() error {
@@ -590,6 +655,8 @@ func (r *ContainerStorageModuleReconciler) addFinalizer(ctx context.Context, ins
 	instance.GetCSMStatus().State = constants.Creating
 	return r.Update(ctx, instance)
 }
+
+// zhou: README,
 
 func (r *ContainerStorageModuleReconciler) oldStandAloneModuleCleanup(ctx context.Context, newCR *csmv1.ContainerStorageModule, operatorConfig utils.OperatorConfig, driverConfig *DriverConfig) error {
 	log := logger.GetLogger(ctx)
@@ -694,6 +761,8 @@ func (r *ContainerStorageModuleReconciler) oldStandAloneModuleCleanup(ctx contex
 	return r.GetClient().Update(ctx, newCR)
 }
 
+// zhou: reconcile CSM CR to create and update CSI driver and CSM standalone module.
+
 // SyncCSM - Sync the current installation - this can lead to a create or update
 func (r *ContainerStorageModuleReconciler) SyncCSM(ctx context.Context, cr csmv1.ContainerStorageModule, operatorConfig utils.OperatorConfig, ctrlClient client.Client) error {
 	log := logger.GetLogger(ctx)
@@ -729,6 +798,10 @@ func (r *ContainerStorageModuleReconciler) SyncCSM(ctx context.Context, cr csmv1
 		}
 	}
 
+	// zhou: handle CSI driver
+
+	// zhou: get all CSI driver related expected objects to be created
+
 	// Get Driver resources
 	driverConfig, err := getDriverConfig(ctx, cr, operatorConfig)
 	if err != nil {
@@ -754,6 +827,8 @@ func (r *ContainerStorageModuleReconciler) SyncCSM(ctx context.Context, cr csmv1
 	if err != nil {
 		return err
 	}
+
+	// zhou: handle CSM modules
 
 	for _, m := range cr.Spec.Modules {
 		if m.Enabled {
@@ -828,6 +903,8 @@ func (r *ContainerStorageModuleReconciler) SyncCSM(ctx context.Context, cr csmv1
 		}
 	}
 
+	// zhou: create objects according to expected one.
+
 	for _, cluster := range clusterClients {
 		log.Infof("Starting SYNC for %s cluster", cluster.ClusterID)
 		// Create/Update ServiceAccount
@@ -857,20 +934,28 @@ func (r *ContainerStorageModuleReconciler) SyncCSM(ctx context.Context, cr csmv1
 			return err
 		}
 
+		// zhou: create/update CSIDriver object
+
 		// Create/Update CSIDriver
 		if err = csidriver.SyncCSIDriver(ctx, *driver, cluster.ClusterCTRLClient); err != nil {
 			return err
 		}
+
+		// zhou: create/update ConfigMap
 
 		// Create/Update ConfigMap
 		if err = configmap.SyncConfigMap(ctx, *configMap, cluster.ClusterCTRLClient); err != nil {
 			return err
 		}
 
+		// zhou: create/update Deployment, and add CSM CR name in deployment's Label
+
 		// Create/Update Deployment
 		if err = deployment.SyncDeployment(ctx, controller.Deployment, cluster.ClusterK8sClient, cr.Name); err != nil {
 			return err
 		}
+
+		// zhou: create/update DaemonSet, and add CSM CR name in DaemonSet's Label
 
 		// Create/Update DeamonSet, except for auth proxy
 		if !authorizationEnabled {
@@ -1086,6 +1171,8 @@ func (r *ContainerStorageModuleReconciler) reconcileAppMobility(ctx context.Cont
 	return nil
 }
 
+// zhou: get all CSI driver related expected objects to be created
+
 func getDriverConfig(ctx context.Context,
 	cr csmv1.ContainerStorageModule,
 	operatorConfig utils.OperatorConfig,
@@ -1113,20 +1200,29 @@ func getDriverConfig(ctx context.Context,
 		// use powerscale instead of isilon as the folder name is powerscale
 		driverType = csmv1.PowerScaleName
 	}
+
+	// zhou: get Expected ConfigMap to be created.
+
 	configMap, err = drivers.GetConfigMap(ctx, cr, operatorConfig, driverType)
 	if err != nil {
 		return nil, fmt.Errorf("getting %s configMap: %v", driverType, err)
 	}
+
+	// zhou: get Expected CSIDriver to be created.
 
 	driver, err = drivers.GetCSIDriver(ctx, cr, operatorConfig, driverType)
 	if err != nil {
 		return nil, fmt.Errorf("getting %s CSIDriver: %v", driverType, err)
 	}
 
+	// zhou: get Expected CSI driver Node Plugin DaemonSet and related RBAC objects to be created.
+
 	node, err = drivers.GetNode(ctx, cr, operatorConfig, driverType, NodeYaml)
 	if err != nil {
 		return nil, fmt.Errorf("getting %s node: %v", driverType, err)
 	}
+
+	// zhou: get Expected CSI driver Control Plugin Deployment and related RBAC objects to be created.
 
 	controller, err = drivers.GetController(ctx, cr, operatorConfig, driverType)
 	if err != nil {
@@ -1234,6 +1330,8 @@ func removeDriverReplicaCluster(ctx context.Context, cluster utils.ReplicaCluste
 	return nil
 }
 
+// zhou: README, delete CSI driver and CSM module sidecars due to CSM CR deleted.
+
 func (r *ContainerStorageModuleReconciler) removeDriver(ctx context.Context, instance csmv1.ContainerStorageModule, operatorConfig utils.OperatorConfig) error {
 	log := logger.GetLogger(ctx)
 
@@ -1276,6 +1374,8 @@ func (r *ContainerStorageModuleReconciler) removeDriver(ctx context.Context, ins
 	return nil
 }
 
+// zhou: README, delete standalone CSM modules due to CSM CR deleted.
+
 // removeModule - remove standalone modules
 func (r *ContainerStorageModuleReconciler) removeModule(ctx context.Context, instance csmv1.ContainerStorageModule, operatorConfig utils.OperatorConfig, ctrlClient client.Client) error {
 	log := logger.GetLogger(ctx)
@@ -1302,6 +1402,9 @@ func (r *ContainerStorageModuleReconciler) removeModule(ctx context.Context, ins
 
 	return nil
 }
+
+// zhou: validate and update "cr".
+//       For powerflex, MDM ip is added into "cr".
 
 // PreChecks - validate input values
 func (r *ContainerStorageModuleReconciler) PreChecks(ctx context.Context, cr *csmv1.ContainerStorageModule, operatorConfig utils.OperatorConfig) error {
@@ -1449,6 +1552,8 @@ func (r *ContainerStorageModuleReconciler) checkUpgrade(ctx context.Context, cr 
 	return true, nil
 }
 
+// zhou: set CSM version and CSI driver version in annotation. Return true if CSI driver changed.
+
 // applyConfigVersionAnnotations - applies the config version annotation to the instance.
 func applyConfigVersionAnnotations(ctx context.Context, instance *csmv1.ContainerStorageModule) bool {
 	log := logger.GetLogger(ctx)
@@ -1469,7 +1574,13 @@ func applyConfigVersionAnnotations(ctx context.Context, instance *csmv1.Containe
 		configVersion = instance.Spec.Driver.ConfigVersion
 	}
 
+	// zhou: "storage.dell.com/CSMVersion"
+
 	if annotations[configVersionKey] != configVersion {
+
+		// zhou: "storage.dell.com/CSMOperatorConfigVersion"
+		//       Set CSI driver version in CSM CR annotation.
+
 		annotations[configVersionKey] = configVersion
 		log.Infof("Installing csm component %s with config Version %s. Updating Annotations with Config Version",
 			instance.GetName(), configVersion)

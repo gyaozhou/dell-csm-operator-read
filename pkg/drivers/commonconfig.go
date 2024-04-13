@@ -81,6 +81,8 @@ var defaultVolumeConfigName = map[csmv1.DriverType]string{
 	csmv1.PowerScaleName: "isilon-configs",
 }
 
+// zhou: get Expected CSI driver Control Plugin Deployment and related RBAC objects to be created.
+
 // GetController get controller yaml
 func GetController(ctx context.Context, cr csmv1.ContainerStorageModule, operatorConfig utils.OperatorConfig, driverName csmv1.DriverType) (*utils.ControllerYAML, error) {
 	log := logger.GetLogger(ctx)
@@ -92,6 +94,8 @@ func GetController(ctx context.Context, cr csmv1.ContainerStorageModule, operato
 		return nil, err
 	}
 
+	// zhou: replace <DriverDefaultReleaseName> and <DriverDefaultReleaseNamespace> with CR name and namespace
+
 	YamlString := utils.ModifyCommonCR(string(buf), cr)
 	if cr.Spec.Driver.CSIDriverType == "powerstore" {
 		YamlString = ModifyPowerstoreCR(YamlString, cr, "Controller")
@@ -100,6 +104,9 @@ func GetController(ctx context.Context, cr csmv1.ContainerStorageModule, operato
 	if cr.Spec.Driver.CSIDriverType == "unity" {
 		YamlString = ModifyUnityCR(YamlString, cr, "Controller")
 	}
+
+	// zhou: used to update CSI driver Controller Plugin Deployment and related RBAC objects according to CSM CR.
+
 	if cr.Spec.Driver.CSIDriverType == "powerflex" {
 		YamlString = ModifyPowerflexCR(YamlString, cr, "Controller")
 	}
@@ -107,11 +114,16 @@ func GetController(ctx context.Context, cr csmv1.ContainerStorageModule, operato
 		YamlString = ModifyPowermaxCR(YamlString, cr, "Controller")
 	}
 
+	// zhou: convert to corresponding object
+
 	driverYAML, err := utils.GetDriverYaml(YamlString, "Deployment")
 	if err != nil {
 		log.Errorw("GetController get Deployment failed", "Error", err.Error())
 		return nil, err
 	}
+
+	// zhou: README, replace things defined in "operatorconfig/driverconfig/..../controller.yaml"
+	//       with defined in CR.
 
 	controllerYAML := driverYAML.(utils.ControllerYAML)
 	controllerYAML.Deployment.Spec.Replicas = &cr.Spec.Driver.Replicas
@@ -296,9 +308,14 @@ func GetAccController(ctx context.Context, cr csmv1.ApexConnectivityClient, oper
 	return &statefulsetYAML, nil
 }
 
+// zhou: get Expected CSI driver Node Plugin DaemonSet and related RBAC objects to be created.
+
 // GetNode get node yaml
 func GetNode(ctx context.Context, cr csmv1.ContainerStorageModule, operatorConfig utils.OperatorConfig, driverType csmv1.DriverType, filename string) (*utils.NodeYAML, error) {
 	log := logger.GetLogger(ctx)
+
+	// zhou: "driverconfig/powerflex/v2.10.0/node.yaml"
+
 	configMapPath := fmt.Sprintf("%s/driverconfig/%s/%s/%s", operatorConfig.ConfigDirectory, driverType, cr.Spec.Driver.ConfigVersion, filename)
 	log.Debugw("GetNode", "configMapPath", configMapPath)
 	buf, err := os.ReadFile(filepath.Clean(configMapPath))
@@ -307,10 +324,16 @@ func GetNode(ctx context.Context, cr csmv1.ContainerStorageModule, operatorConfi
 		return nil, err
 	}
 
+	// zhou: replace <DriverDefaultReleaseName> and <DriverDefaultReleaseNamespace> with CR name and namespace
+
 	YamlString := utils.ModifyCommonCR(string(buf), cr)
+
 	if cr.Spec.Driver.CSIDriverType == "powerstore" {
 		YamlString = ModifyPowerstoreCR(YamlString, cr, "Node")
 	}
+
+	// zhou: used to update CSI driver Node Plugin DaemonSet and related RBAC objects according to CSM CR.
+
 	if cr.Spec.Driver.CSIDriverType == "powerflex" {
 		YamlString = ModifyPowerflexCR(YamlString, cr, "Node")
 	}
@@ -326,6 +349,9 @@ func GetNode(ctx context.Context, cr csmv1.ContainerStorageModule, operatorConfi
 		log.Errorw("GetNode Daemonset failed", "Error", err.Error())
 		return nil, err
 	}
+
+	// zhou: README, replace things defined in "operatorconfig/driverconfig/..../node.yaml"
+	//       with defined in CR.
 
 	nodeYaml := driverYAML.(utils.NodeYAML)
 
@@ -427,6 +453,8 @@ func GetNode(ctx context.Context, cr csmv1.ContainerStorageModule, operatorConfi
 	return &nodeYaml, nil
 }
 
+// zhou: README,
+
 // GetUpgradeInfo -
 func GetUpgradeInfo(ctx context.Context, operatorConfig utils.OperatorConfig, driverType csmv1.DriverType, oldVersion string) (string, error) {
 	log := logger.GetLogger(ctx)
@@ -451,6 +479,9 @@ func GetUpgradeInfo(ctx context.Context, operatorConfig utils.OperatorConfig, dr
 	return upgradePath.MinUpgradePath, nil
 }
 
+// zhou: get Expected ConfigMap to be created.
+//       ConfigMap in "driver-config-params.yaml" is used to control debug log level.
+
 // GetConfigMap get configmap
 func GetConfigMap(ctx context.Context, cr csmv1.ContainerStorageModule, operatorConfig utils.OperatorConfig, driverName csmv1.DriverType) (*corev1.ConfigMap, error) {
 	log := logger.GetLogger(ctx)
@@ -464,6 +495,10 @@ func GetConfigMap(ctx context.Context, cr csmv1.ContainerStorageModule, operator
 		log.Errorw("GetConfigMap failed", "Error", err.Error())
 		return nil, err
 	}
+
+	// zhou: replace <DriverDefaultReleaseName> and <DriverDefaultReleaseNamespace> with CR name and namespace
+	//       in ConfigMap.
+
 	YamlString := utils.ModifyCommonCR(string(buf), cr)
 
 	var configMap corev1.ConfigMap
@@ -474,6 +509,8 @@ func GetConfigMap(ctx context.Context, cr csmv1.ContainerStorageModule, operator
 		log.Errorw("GetConfigMap yaml marshall failed", "Error", err.Error())
 		return nil, err
 	}
+
+	// zhou: CR csi driver debug log setting will overrite default in file.
 
 	for _, env := range cr.Spec.Driver.Common.Envs {
 		if env.Name == "CSI_LOG_LEVEL" {
@@ -508,9 +545,14 @@ func GetConfigMap(ctx context.Context, cr csmv1.ContainerStorageModule, operator
 	return &configMap, nil
 }
 
+// zhou: get Expected CSIDriver to be created.
+
 // GetCSIDriver get driver
 func GetCSIDriver(ctx context.Context, cr csmv1.ContainerStorageModule, operatorConfig utils.OperatorConfig, driverName csmv1.DriverType) (*storagev1.CSIDriver, error) {
 	log := logger.GetLogger(ctx)
+
+	// zhou: FIXME, here is not ConfigMap.
+
 	configMapPath := fmt.Sprintf("%s/driverconfig/%s/%s/csidriver.yaml", operatorConfig.ConfigDirectory, driverName, cr.Spec.Driver.ConfigVersion)
 	log.Debugw("GetCSIDriver", "configMapPath", configMapPath)
 	buf, err := os.ReadFile(filepath.Clean(configMapPath))
@@ -521,7 +563,12 @@ func GetCSIDriver(ctx context.Context, cr csmv1.ContainerStorageModule, operator
 
 	var csidriver storagev1.CSIDriver
 
+	// zhou: replace <DriverDefaultReleaseName> and <DriverDefaultReleaseNamespace> with CR name and namespace.
+
 	YamlString := utils.ModifyCommonCR(string(buf), cr)
+
+	// zhou: used to update CSI driver CSIDriver according to CSM CR.
+
 	switch cr.Spec.Driver.CSIDriverType {
 	case "powerstore":
 		YamlString = ModifyPowerstoreCR(YamlString, cr, "CSIDriverSpec")
