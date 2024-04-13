@@ -41,6 +41,8 @@ var GetClientSetWrapper = func() (kubernetes.Interface, error) {
 	return clientset, nil
 }
 
+// zhou: fetch k8s server version
+
 // GetKubeAPIServerVersion returns version of the k8s/openshift cluster
 func GetKubeAPIServerVersion() (*version.Info, error) {
 	// Get a config to talk to the apiserver
@@ -56,6 +58,8 @@ func GetKubeAPIServerVersion() (*version.Info, error) {
 	}
 	return sv, nil
 }
+
+// zhou: looks not so formal.
 
 // IsOpenShift - Returns a boolean which indicates if we are running in an OpenShift cluster
 func IsOpenShift() (bool, error) {

@@ -47,6 +47,8 @@ func SyncDeployment(ctx context.Context, deployment appsv1.DeploymentApplyConfig
 		log.Infow("found deployment", "image", found.Spec.Template.Spec.Containers[0].Image)
 	}
 
+	// zhou: add CSM CR name in deployment
+
 	deployment.Spec.Template.Labels["csm"] = csmName
 	set, err := deployments.Apply(ctx, &deployment, opts)
 	if err != nil {

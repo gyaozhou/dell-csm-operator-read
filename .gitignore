@@ -23,6 +23,8 @@ __debug_bin*
 !vendor/**/zz_generated.*
 
 # editor and IDE paraphernalia
+cscope.files
+cscope.out
 .idea
 *.swp
 *.swo
